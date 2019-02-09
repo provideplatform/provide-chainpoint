@@ -118,7 +118,7 @@ func ImmortalizeHashes(provideID string, hashes []*[]byte) error {
 		return fmt.Errorf("Failed to immortalize %d bundles of hashes via chainpoint daemon; singleton daemon instance not yet initialized in this process", len(hashes))
 	}
 
-	Log.Debugf("Attempting to immortalize %d hashes via chainpoint daemon", len(hashes))
+	Log.Debugf("Attempting to immortalize %d hash(es) via chainpoint daemon", len(hashes))
 	for _, hashptr := range hashes {
 		hash := provide.Keccak256(fmt.Sprintf("%s.%s", provideID, string(*hashptr)))
 		daemon.q <- &hash
