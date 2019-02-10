@@ -82,6 +82,8 @@ func (d *chainptDaemon) run() error {
 				Log.Warningf("Dropping %d immortalized chainpoint proofs which have not been verified", len(d.pQ))
 			}
 			return d.flushHashes()
+		default:
+			// no-op
 		}
 	}
 }
