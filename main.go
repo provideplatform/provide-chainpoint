@@ -3,7 +3,6 @@ package providechainpoint
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/provideservices/provide-go"
@@ -18,7 +17,6 @@ type chainptDaemon struct {
 	bufferSize          int
 	flushIntervalMillis uint
 	lastFlushTimestamp  time.Time
-	mutex               *sync.Mutex
 	sleepIntervalMillis uint
 
 	shutdown context.Context
@@ -50,7 +48,6 @@ func RunChainpointDaemon(bufferSize int, flushIntervalMillis uint) error {
 	daemon.q = make(chan *[]byte, bufferSize)
 	daemon.bufferSize = bufferSize
 	daemon.flushIntervalMillis = flushIntervalMillis
-	daemon.mutex = &sync.Mutex{}
 	daemon.lastFlushTimestamp = time.Now()
 	go daemon.run()
 
@@ -75,15 +72,12 @@ func (d *chainptDaemon) run() error {
 }
 
 func (d *chainptDaemon) flush() error {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
-
 	for {
 		select {
 		case hashes, ok := <-d.q:
 			if ok {
 				Log.Debugf("Attempting to flush %d hashes to chainpoint", len(*hashes))
-				proofHandles, err := provide.SubmitHashes(*hashes, nil)
+				proofHandles, err := SubmitHashes(*hashes, nil)
 				if err != nil {
 					Log.Warningf("Failed to receive message from chainpoint daemon; will reattempt submission of %d hashes", len(*hashes))
 					d.q <- hashes
