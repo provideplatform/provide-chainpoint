@@ -163,6 +163,9 @@ func ImmortalizeHashes(provideID string, hashes []*[]byte) error {
 	for _, hashptr := range hashes {
 		hash := provide.Keccak256(fmt.Sprintf("%s.%s", provideID, string(*hashptr)))
 		daemon.q <- &hash
+		if len(daemon.q) == daemon.bufferSize {
+			daemon.flushHashes()
+		}
 	}
 
 	return nil
