@@ -103,7 +103,7 @@ func (d *chainptDaemon) flushHashes() error {
 				Log.Debugf("Attempting to flush %d hashes to chainpoint", len(*hashes))
 				proofHandles, err := SubmitHashes(*hashes, nil)
 				if err != nil {
-					Log.Warningf("Failed to receive message from chainpoint daemon; will reattempt submission of %d hashes; %s", len(*hashes), err.Error()_)
+					Log.Warningf("Failed to receive message from chainpoint daemon; will reattempt submission of %d hashes; %s", len(*hashes), err.Error())
 					d.q <- hashes
 					continue
 				}
