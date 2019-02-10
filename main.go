@@ -3,13 +3,15 @@ package providechainpoint
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/provideservices/provide-go"
 )
 
 var (
-	daemon *chainptDaemon
+	daemon    *chainptDaemon
+	waitGroup sync.WaitGroup
 )
 
 type chainptDaemon struct {
@@ -45,15 +47,19 @@ func RunChainpointDaemon(bufferSize int, flushIntervalMillis, proofIntervalMilli
 		return fmt.Errorf(msg)
 	}
 
-	daemon = new(chainptDaemon)
-	daemon.shutdown, daemon.cancelF = context.WithCancel(context.Background())
-	daemon.bufferSize = bufferSize
-	daemon.flushIntervalMillis = flushIntervalMillis
-	daemon.proofIntervalMillis = proofIntervalMillis
-	daemon.lastFlushTimestamp = time.Now()
-	daemon.q = make(chan *[]byte, bufferSize)
-	daemon.pQ = make(chan []ProofHandle, bufferSize)
-	go daemon.run()
+	go func() {
+		waitGroup.Add(1)
+		daemon = new(chainptDaemon)
+		daemon.shutdown, daemon.cancelF = context.WithCancel(context.Background())
+		daemon.bufferSize = bufferSize
+		daemon.flushIntervalMillis = flushIntervalMillis
+		daemon.proofIntervalMillis = proofIntervalMillis
+		daemon.lastFlushTimestamp = time.Now()
+		daemon.q = make(chan *[]byte, bufferSize)
+		daemon.pQ = make(chan []ProofHandle, bufferSize)
+		go daemon.run()
+		waitGroup.Wait()
+	}()
 
 	return nil
 }
