@@ -70,7 +70,7 @@ func (d *chainptDaemon) run() error {
 				d.flushHashes()
 			}
 		case <-proofTicker.C:
-			if len(d.q) > 0 {
+			if len(d.pQ) > 0 {
 				d.flushProofs()
 			}
 		case <-d.shutdown.Done():
