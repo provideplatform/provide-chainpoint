@@ -115,7 +115,7 @@ func (d *chainptDaemon) flushProofs() error {
 		select {
 		case proofHandles, ok := <-d.pQ:
 			if ok {
-				Log.Debugf("Attempting to flush %d hashes to chainpoint", len(proofHandles))
+				Log.Debugf("Attempting to fetch %d proofs from chainpoint", len(proofHandles))
 				proofs, err := GetProofs(proofHandles)
 				if err != nil {
 					Log.Warningf("Failed to receive message from chainpoint daemon; will reattempt fetching %d proofs", len(proofHandles))
