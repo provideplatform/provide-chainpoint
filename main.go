@@ -95,6 +95,7 @@ func (d *chainptDaemon) run() error {
 }
 
 func (d *chainptDaemon) flushHashes() error {
+	Log.Debugf("Attempting to flush chainpoint hashes...")
 	for {
 		select {
 		case hashes, ok := <-d.q:
@@ -119,6 +120,7 @@ func (d *chainptDaemon) flushHashes() error {
 }
 
 func (d *chainptDaemon) flushProofs() error {
+	Log.Debugf("Attempting to flush pending chainpoint proofs...")
 	for {
 		select {
 		case proofHandles, ok := <-d.pQ:
