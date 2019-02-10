@@ -100,7 +100,7 @@ func (d *chainptDaemon) flushHashes() error {
 		select {
 		case hashes, ok := <-d.q:
 			if ok {
-				Log.Debugf("Attempting to flush %d hashes to chainpoint", len(*hashes))
+				Log.Debugf("Attempting to flush %d hashes to chainpoint: %s", len(*hashes), *hashes)
 				proofHandles, err := SubmitHashes(*hashes, nil)
 				if err != nil {
 					Log.Warningf("Failed to receive message from chainpoint daemon; will reattempt submission of %d hashes", len(*hashes))
