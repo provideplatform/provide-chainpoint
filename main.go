@@ -13,11 +13,13 @@ var (
 )
 
 type chainptDaemon struct {
-	q                   chan *[]byte
+	q                   chan *[]byte       // buffered queue for hashes to immortalize via chainpoint
+	pQ                  chan []ProofHandle // buffered queue for proof-of-immortalization (i.e., fetch, verify and store these proofs)
 	bufferSize          int
 	flushIntervalMillis uint
 	lastFlushTimestamp  time.Time
 	sleepIntervalMillis uint
+	proofIntervalMillis uint
 
 	shutdown context.Context
 	cancelF  context.CancelFunc
@@ -36,7 +38,7 @@ type chainptDaemon struct {
 //
 // This method returns an error if there is already a chainpoint usage daemon running
 // in the parent golang process (chainpoint daemon is currently singleton-per-process).
-func RunChainpointDaemon(bufferSize int, flushIntervalMillis uint) error {
+func RunChainpointDaemon(bufferSize int, flushIntervalMillis, proofIntervalMillis uint) error {
 	if daemon != nil {
 		msg := "Attempted to run chainpoint daemon after singleton instance started"
 		Log.Warningf(msg)
@@ -45,10 +47,12 @@ func RunChainpointDaemon(bufferSize int, flushIntervalMillis uint) error {
 
 	daemon = new(chainptDaemon)
 	daemon.shutdown, daemon.cancelF = context.WithCancel(context.Background())
-	daemon.q = make(chan *[]byte, bufferSize)
 	daemon.bufferSize = bufferSize
 	daemon.flushIntervalMillis = flushIntervalMillis
+	daemon.proofIntervalMillis = proofIntervalMillis
 	daemon.lastFlushTimestamp = time.Now()
+	daemon.q = make(chan *[]byte, bufferSize)
+	daemon.pQ = make(chan []ProofHandle, bufferSize)
 	go daemon.run()
 
 	return nil
@@ -56,22 +60,33 @@ func RunChainpointDaemon(bufferSize int, flushIntervalMillis uint) error {
 
 func (d *chainptDaemon) run() error {
 	Log.Debugf("Running chainpoint daemon...")
-	ticker := time.NewTicker(time.Duration(d.flushIntervalMillis) * time.Millisecond)
+	flushTicker := time.NewTicker(time.Duration(d.flushIntervalMillis) * time.Millisecond)
+	proofTicker := time.NewTicker(time.Duration(d.proofIntervalMillis) * time.Millisecond)
+
 	for {
 		select {
-		case <-ticker.C:
+		case <-flushTicker.C:
 			if len(d.q) > 0 {
-				d.flush()
+				d.flushHashes()
+			}
+		case <-proofTicker.C:
+			if len(d.q) > 0 {
+				d.flushProofs()
 			}
 		case <-d.shutdown.Done():
 			Log.Debugf("Flushing chainpoint daemon on shutdown")
-			ticker.Stop()
-			return d.flush()
+			flushTicker.Stop()
+			proofTicker.Stop()
+			d.flushProofs()
+			if len(d.pQ) > 0 {
+				Log.Warningf("Dropping %d immortalized chainpoint proofs which have not been verified", len(d.pQ))
+			}
+			return d.flushHashes()
 		}
 	}
 }
 
-func (d *chainptDaemon) flush() error {
+func (d *chainptDaemon) flushHashes() error {
 	for {
 		select {
 		case hashes, ok := <-d.q:
@@ -84,15 +99,37 @@ func (d *chainptDaemon) flush() error {
 					continue
 				}
 				Log.Debugf("Received %d chainpoint proofs in response to submission of %d hashes", len(proofHandles), len(*hashes))
-				// TODO: schedule chainpoint verification verification i.e., NATS "calendar subject" as referenced in architecture.svg
+				d.pQ <- proofHandles
+				// TODO: diff the response against input array; requeue or log failures
 			} else {
 				Log.Warningf("Failed to receive message from chainpoint daemon channel")
 			}
 		default:
-			if len(d.q) == 0 {
-				Log.Debugf("chainpoint daemon buffered channel flushed")
-				return nil
+			// no-op
+		}
+	}
+}
+
+func (d *chainptDaemon) flushProofs() error {
+	for {
+		select {
+		case proofHandles, ok := <-d.pQ:
+			if ok {
+				Log.Debugf("Attempting to flush %d hashes to chainpoint", len(proofHandles))
+				proofs, err := GetProofs(proofHandles)
+				if err != nil {
+					Log.Warningf("Failed to receive message from chainpoint daemon; will reattempt fetching %d proofs", len(proofHandles))
+					d.pQ <- proofHandles
+					continue
+				}
+				Log.Debugf("Fetched %d chainpoint proofs for verification in response to submission of %d hashes", len(proofs), len(proofHandles))
+				// TODO: diff the response against input array; requeue or log failures
+				Log.Debugf("Received %d proofs: %s", len(proofs), proofs)
+			} else {
+				Log.Warningf("Failed to receive message from chainpoint daemon channel")
 			}
+		default:
+			// no-op
 		}
 	}
 }
