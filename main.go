@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/provideservices/provide-go"
 )
 
@@ -15,7 +16,7 @@ var (
 )
 
 type chainptDaemon struct {
-	q                   chan *[]byte       // buffered queue for hashes to immortalize via chainpoint
+	q                   chan []byte        // buffered queue for hashes to immortalize via chainpoint
 	pQ                  chan []ProofHandle // buffered queue for proof-of-immortalization (i.e., fetch, verify and store these proofs)
 	bufferSize          int
 	flushIntervalMillis uint
@@ -55,7 +56,7 @@ func RunChainpointDaemon(bufferSize int, flushIntervalMillis, proofIntervalMilli
 		daemon.flushIntervalMillis = flushIntervalMillis
 		daemon.proofIntervalMillis = proofIntervalMillis
 		daemon.lastFlushTimestamp = time.Now()
-		daemon.q = make(chan *[]byte, bufferSize)
+		daemon.q = make(chan []byte, bufferSize)
 		daemon.pQ = make(chan []ProofHandle, bufferSize)
 		go daemon.run()
 		waitGroup.Wait()
@@ -95,32 +96,41 @@ func (d *chainptDaemon) run() error {
 }
 
 func (d *chainptDaemon) flushHashes() error {
-	Log.Debugf("Attempting to flush chainpoint hashes...")
-	for {
-		select {
-		case hashes, ok := <-d.q:
-			if ok {
-				Log.Debugf("Attempting to flush %d hashes to chainpoint", len(*hashes))
-				proofHandles, err := SubmitHashes(*hashes, nil)
-				if err != nil {
-					Log.Warningf("Failed to receive message from chainpoint daemon; will reattempt submission of %d hashes; %s", len(*hashes), err.Error())
-					d.q <- hashes
-					continue
-				}
-				Log.Debugf("Received %d chainpoint proofs in response to submission of %d hashes", len(proofHandles), len(*hashes))
-				d.pQ <- proofHandles
-				// TODO: diff the response against input array; requeue or log failures
-			} else {
-				Log.Warningf("Failed to receive message from chainpoint daemon channel")
-			}
-		default:
-			// no-op
+	hashes := make([][]byte, len(d.q))
+
+	select {
+	case hash, ok := <-d.q:
+		if ok {
+			hashes = append(hashes, hash)
+		} else {
+			Log.Warningf("Failed to receive message from chainpoint daemon channel")
+		}
+	default:
+		// no-op
+		if len(hashes) == d.bufferSize {
+			break
 		}
 	}
+
+	Log.Debugf("Hashes... %s", hashes)
+
+	proofHandles, err := SubmitHashes(hashes, nil)
+	if err != nil {
+		Log.Warningf("Failed to receive message from chainpoint daemon; will reattempt submission of %d hashes; %s", len(hashes), err.Error())
+		for _, hash := range hashes {
+			d.q <- hash
+		}
+		return err
+	}
+	Log.Debugf("Received %d chainpoint proofs in response to submission of %d hashes", len(proofHandles), len(hashes))
+	d.pQ <- proofHandles
+	// TODO: diff the response against input array; requeue or log failures
+
+	return nil
 }
 
 func (d *chainptDaemon) flushProofs() error {
-	Log.Debugf("Attempting to flush pending chainpoint proofs...")
+	Log.Debugf("Attempting to flush %d pending chainpoint proofs...", len(d.pQ))
 	for {
 		select {
 		case proofHandles, ok := <-d.pQ:
@@ -162,7 +172,7 @@ func ImmortalizeHashes(provideID string, hashes []*[]byte) error {
 	Log.Debugf("Attempting to immortalize %d hash(es) via chainpoint daemon", len(hashes))
 	for _, hashptr := range hashes {
 		hash := provide.Keccak256(fmt.Sprintf("%s.%s", provideID, string(*hashptr)))
-		daemon.q <- &hash
+		daemon.q <- []byte(common.Bytes2Hex(hash))
 		if len(daemon.q) == daemon.bufferSize {
 			daemon.flushHashes()
 		}
