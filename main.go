@@ -96,17 +96,20 @@ func (d *chainptDaemon) run() error {
 }
 
 func (d *chainptDaemon) flushHashes() error {
-	hashes := make([][]byte, len(d.q))
+	hashes := make([][]byte, 0)
 
-	select {
-	case hash, ok := <-d.q:
-		if ok {
-			hashes = append(hashes, hash)
-		} else {
-			Log.Warningf("Failed to receive message from chainpoint daemon channel")
+	for {
+		select {
+		case hash, ok := <-d.q:
+			if ok {
+				hashes = append(hashes, hash)
+			} else {
+				Log.Warningf("Failed to receive message from chainpoint daemon channel")
+			}
+		default:
+			// no-op
 		}
-	default:
-		// no-op
+
 		if len(hashes) == d.bufferSize {
 			break
 		}
