@@ -241,7 +241,7 @@ func submitHashesToNode(queue chan submitHashesResponse, w *sync.WaitGroup, URI 
 	defer w.Done()
 	var submitHashesResponse submitHashesResponse
 
-	hashesList := make([]string, len(hashes))
+	var hashesList []string
 	for _, hash := range hashes {
 		hashesList = append(hashesList, string(hash))
 	}
